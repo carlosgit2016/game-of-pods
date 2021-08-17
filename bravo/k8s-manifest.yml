@@ -12,11 +12,9 @@ spec:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Recycle
   storageClassName: slow
-  mountOptions:
-    - hard
-    - nfsvers=4.1
   hostPath:
     path: /drupal-data
+    type: Directory
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -33,6 +31,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   volumeName: drupal-pv
+  storageClassName: slow
 ---
 apiVersion: v1
 kind: Service
@@ -62,6 +61,17 @@ spec:
       labels:
         app: drupal
     spec:
+      initContainers:
+        - name: init-sites-volume
+          image: drupal:8.6
+          volumeMounts:
+            - mountPath: /data
+              name: drupal-pvc
+          command:
+          - "/bin/bash"
+          - "-c"
+          args:
+            - "cp -r /var/www/html/sites/ /data/; chown www-data:www-data /data/ -R"
       containers:
       - name: drupal
         image: drupal:8.6
@@ -72,19 +82,37 @@ spec:
         ports:
         - containerPort: 80
         volumeMounts:
-          - mountPath: /var/www/html/modules
-            name: data
-            subPath: modules
+          - mountPath: /var/www/html/modules # Mount path on the container
+            name: drupal-pvc
+            subPath: modules # Subpath in the mount volume
           - mountPath: /var/www/html/profiles
-            name: data
+            name: drupal-pvc
             subPath: profiles
           - mountPath: /var/www/html/sites
-            name: data
+            name: drupal-pvc
             subPath: sites
           - mountPath: /var/www/html/themes
-            name: data
+            name: drupal-pvc
             subPath: themes
       volumes:
-        - name: data
+        - name: drupal-pvc
           persistentVolumeClaim:
             claimName: drupal-pvc
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: drupal-pv
+  labels:
+    pv: drupal-pv
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Recycle
+  storageClassName: slow
+  hostPath:
+    path: /drupal-data
+    type: Directory
