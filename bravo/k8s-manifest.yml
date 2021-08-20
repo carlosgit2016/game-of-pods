@@ -116,3 +116,102 @@ spec:
   hostPath:
     path: /drupal-data
     type: Directory
+---
+# MySQL database side
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: drupal-mysql-pv
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Recycle
+  storageClassName: slow
+  hostPath:
+    path: /drupal-mysql-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: drupal-mysql-pvc
+spec:
+  resources:
+    requests:
+      storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: slow
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: drupal-mysql-secret
+type: Opaque
+stringData:
+  MYSQL_ROOT_PASSWORD: root_password
+  MYSQL_DATABASE: drupal-database
+  MYSQL_USER: mysql
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: drupal-mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: drupal-mysql
+  template:
+    metadata:
+      labels:
+        app: drupal-mysql
+    spec:
+      containers:
+      - name: drupal-mysql
+        image: mysql:5.7
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+          - mountPath: /var/lib/mysql
+            name: drupal-mysql-pvc
+            subPath: dbdata
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: MYSQL_ROOT_PASSWORD
+                name: drupal-mysql-secret 
+          - name: MYSQL_DATABASE
+            valueFrom:
+              secretKeyRef:
+                key: MYSQL_DATABASE
+                name: drupal-mysql-secret
+          - name: MYSQL_USER
+            valueFrom:
+              secretKeyRef:
+                key: MYSQL_USER
+                name: drupal-mysql-secret
+
+      volumes:
+        - name: drupal-mysql-pvc
+          persistentVolumeClaim:
+            claimName: drupal-mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: drupal-mysql-service
+spec:
+  type: ClusterIP
+  selector:
+    app: drupal-mysql
+  ports:
+  - port: 3306
